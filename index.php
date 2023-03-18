@@ -4,9 +4,13 @@ require_once 'vendor/autoload.php';
 include_once 'header.php';
 
 use PhpOffice\PhpWord\IOFactory;
+use JetBrains\PhpStorm\NoReturn;
 use PhpOffice\PhpWord\Element\Text;
 use PhpOffice\PhpWord\Element\Table;
 use PhpOffice\PhpWord\Element\TextRun;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
 class Storyline2PHP {
 
@@ -26,7 +30,11 @@ class Storyline2PHP {
 		$this->notes_col_index = 3;
 	}
 
+	/**
+	 * @throws \PhpOffice\PhpSpreadsheet\Writer\Exception
+	 */
 	public function run(): void {
+		session_start();
 		if ($_SERVER['REQUEST_METHOD'] == 'POST' && !empty($_FILES['file']['tmp_name'])) {
 
 			$allowed_extensions = array('docx');
@@ -59,7 +67,13 @@ class Storyline2PHP {
 				}
 			}
 
+			$_SESSION['data'] = $data;
 			$this->printHtmlTable($data);
+		}
+		elseif ($_SERVER['REQUEST_METHOD'] == 'POST' && !empty($_POST['export'])) {
+			// var_dump($_SESSION['data']);
+			$this->exportToExcel();
+
 		} else {
 			$this->renderForm();
 		}
@@ -111,23 +125,80 @@ class Storyline2PHP {
 	}
 
 	/**
+	 * @throws \PhpOffice\PhpSpreadsheet\Writer\Exception
+	 */
+	#[NoReturn] public function exportToExcel(): void {
+		$spreadsheet = new Spreadsheet();
+		$sheet = $spreadsheet->getActiveSheet();
+
+		// Ajouter les en-têtes de colonne
+		$sheet->setCellValue('A1', 'Slide Title');
+		$sheet->setCellValue('B1', 'Notes');
+		$sheet->getStyle('A1:B1')->getFont()->setBold( true );
+
+		// Remplir les données
+		$row = 2;
+		$colored = false;
+		foreach ($_SESSION['data'] as $rows) {
+			foreach ($rows as $id => $notes) {
+				$sheet->setCellValue('A' . $row, $id);
+				$sheet->setCellValue('B' . $row, $notes);
+				if($colored){
+					$sheet->getStyle('A' . $row . ':B' . $row)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('f2f2f2');
+				}
+				$row++;
+				$colored = !$colored;
+			}
+		}
+
+		$sheet->getStyle('A:B')->getAlignment()->setWrapText(true);
+		$sheet->getStyle('A:B')->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
+		$sheet->getColumnDimensionByColumn(1)->setAutoSize(false);
+		$sheet->getColumnDimensionByColumn(1)->setWidth('40');
+		$sheet->getColumnDimensionByColumn(2)->setAutoSize(false);
+		$sheet->getColumnDimensionByColumn(2)->setWidth('120');
+
+
+		// Télécharger le fichier
+		$writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+		$fileName = 'export';
+		ob_end_clean();
+		header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+		header("Content-Disposition: attachment; filename=\"$fileName.xlsx\"");
+		$writer->save('php://output');
+		exit();
+	}
+
+
+	/**
 	 * @param array    $data
 	 *
 	 * @return void
 	 */
 	public function printHtmlTable( array $data ): void {
-		echo "<div class='table-container rounded overflow-hidden'>";
-		echo "<table class='table table-striped table-bordered rounded'>";
-		echo "<tr><th>Slide title</th><th>Notes</th></tr>";
+		echo "<div class='actions mb-4 text-center'>";
+		echo '<form method="get" class="d-inline-block"><button class="btn btn-primary" type="submit" name="display_form">Try with another file</button></form>';
+		echo '<form method="post" class="d-inline-block ms-3"><button class="btn btn-primary" type="submit" name="export" value="1">Export to Excel</button></form>';
+		echo "</div>";
+
+		echo "<div class='shadow-sm overflow-hidden p-4 rounded table-container'>";
+		echo "<table class='rounded table table-striped'>";
+		echo "<thead><tr><th>Slide title</th><th>Notes</th></tr></thead>";
+		echo "<tbody>";
 		foreach( $data as $rows ) {
 			foreach( $rows as $id => $notes ) {
 				$notes = nl2br($notes);
-				echo "<tr><td>$id</td><td>$notes</td></tr>";
+				echo "<tr><td style='width: 25%'><strong>$id</strong></td><td>$notes</td></tr>";
 			}
 		}
+		echo "</tbody>";
 		echo "</table>";
 		echo "</div>";
-		echo '<form method="get"><button class="btn btn-lg btn-primary" type="submit" name="display_form">Try with another file</button></form>';
+
+		echo "<div class='actions mt-4 text-center'>";
+		echo '<form method="get" class="d-inline-block"><button class="btn btn-primary" type="submit" name="display_form">Try with another file</button></form>';
+		echo '<form method="post" class="d-inline-block ms-3"><button class="btn btn-primary" type="submit" name="export" value="1">Export to Excel</button></form>';
+		echo "</div>";
 	}
 
 	/**
@@ -141,13 +212,17 @@ class Storyline2PHP {
 
 	public function renderForm(): void {
 		echo <<<HTML
-		<form method="post" enctype="multipart/form-data">
-			<div>
-				<label for="file">Select a Word file (.docx) :</label>
-				<input class="form-control" type="file" id="file" name="file" accept=".docx" required>
+		<header class="text-center">
+			<h2>Extract notes from Storyline Word export file</h2>
+			<p>In Articulate Storyline, go to File > Translation > Export<br>
+			Drop the .docx file to extract notes only!</p>
+		</header>
+		<form class="mt-5" method="post" enctype="multipart/form-data">
+			<div class="text-center">
+				<label for="file">Select a Word file (.docx)</label>
+				<input class="form-control my-3" type="file" id="file" name="file" accept=".docx" required>
 			</div>
-			<br>
-			<div>
+			<div class="text-center">
 				<input class="btn btn-lg btn-primary" type="submit" value="Send file">
 			</div>
 		</form>
@@ -156,6 +231,10 @@ class Storyline2PHP {
 }
 
 $instance = new Storyline2PHP();
-$instance->run();
+try {
+	$instance->run();
+} catch( \PhpOffice\PhpSpreadsheet\Writer\Exception $e ) {
+	echo $e->getMessage();
+}
 
 include_once 'footer.php';

@@ -1,4 +1,7 @@
 <?php
+// Turn off all error reporting
+error_reporting(0);
+
 require_once 'vendor/autoload.php';
 
 use PhpOffice\PhpWord\IOFactory;
@@ -58,6 +61,22 @@ class Storyline2PHP {
 
 			// Get all sections in the document
 			$sections = $phpWord->getSections();
+
+			if (empty($sections)){
+				?>
+				<div class="alert alert-danger" role="alert">
+					<strong>Your file appears to be empty.</strong> <br>
+					However there is a tiny bug in Storyline export feature:
+					<ol>
+						<li>Try to open your file in Microsoft Word</li>
+						<li>Save it without modifying it</li>
+						<li>Close it</li>
+						<li>Finally try to upload it here again</li>
+					</ol>
+				</div>
+				<?php
+				// exit();
+			}
 
 			// Initialize an empty array to store the data
 			$data     = [];

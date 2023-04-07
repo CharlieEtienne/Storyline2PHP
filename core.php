@@ -11,6 +11,7 @@ use PhpOffice\PhpWord\Element\Table;
 use PhpOffice\PhpWord\Element\TextRun;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
 class Storyline2PHP {
@@ -33,6 +34,7 @@ class Storyline2PHP {
 	 * Main function that runs the program
 	 *
 	 * @throws \PhpOffice\PhpSpreadsheet\Writer\Exception
+	 * @throws \PhpOffice\PhpSpreadsheet\Exception
 	 */
 	public function run(): void {
 		// Start a session to store data across requests
@@ -75,7 +77,6 @@ class Storyline2PHP {
 					</ol>
 				</div>
 				<?php
-				// exit();
 			}
 
 			// Initialize an empty array to store the data
@@ -179,14 +180,14 @@ class Storyline2PHP {
 				$text .= $textRunElement->getText();
 			}
 		}
-		return $text;
+		return trim(html_entity_decode($text));
 	}
 
 	/**
 	 * Export data to Excel format and download.
 	 *
-	 * @throws \PhpOffice\PhpSpreadsheet\Writer\Exception
 	 * @return void
+	 * @throws \PhpOffice\PhpSpreadsheet\Writer\Exception|\PhpOffice\PhpSpreadsheet\Exception
 	 */
 	#[NoReturn] public function exportToExcel(): void {
 
@@ -195,33 +196,43 @@ class Storyline2PHP {
 		$sheet = $spreadsheet->getActiveSheet();
 
 		// Add column headers
-		$sheet->setCellValue('A1', 'Slide Title');
-		$sheet->setCellValue('B1', 'Notes');
-		$sheet->getStyle('A1:B1')->getFont()->setBold( true );
+		$sheet->setCellValue('A1', '#');
+		$sheet->setCellValue('B1', 'Slide Title');
+		$sheet->setCellValue('C1', 'Notes');
+		$sheet->getStyle('A1:C1')->getFont()->setBold( true );
+
+		// Format column styles
+		$sheet->getStyle('A')->getNumberFormat()->setFormatCode('@');
+		$sheet->getStyle('A:C')->getAlignment()->setWrapText(true);
+		$sheet->getStyle('A:C')->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
+		$sheet->getColumnDimensionByColumn(1)->setAutoSize(false);
+		$sheet->getColumnDimensionByColumn(1)->setWidth('6');
+		$sheet->getColumnDimensionByColumn(2)->setAutoSize(false);
+		$sheet->getColumnDimensionByColumn(2)->setWidth('40');
+		$sheet->getColumnDimensionByColumn(3)->setAutoSize(false);
+		$sheet->getColumnDimensionByColumn(3)->setWidth('120');
 
 		// Fill in the data
 		$row = 2;
 		$colored = false;
+
 		foreach ($_SESSION['data'] as $rows) {
-			foreach ($rows as $id => $notes) {
-				$sheet->setCellValue('A' . $row, $id);
-				$sheet->setCellValue('B' . $row, $notes);
+			foreach ($rows as $full_id => $notes) {
+				$parts = explode(" ", $full_id, 2);
+				$id    = $parts[ 0 ];
+				$title = $parts[ 1 ];
+
+				// $sheet->setCellValue('A' . $row, $id);
+				$sheet->getCell('A' . $row)->setValueExplicit( $id, DataType::TYPE_STRING2 );
+				$sheet->setCellValue('B' . $row, $title);
+				$sheet->setCellValue('C' . $row, rtrim($notes));
 				if($colored){
-					$sheet->getStyle('A' . $row . ':B' . $row)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('f2f2f2');
+					$sheet->getStyle('A' . $row . ':C' . $row)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('f2f2f2');
 				}
 				$row++;
 				$colored = !$colored;
 			}
 		}
-
-		// Format column styles
-		$sheet->getStyle('A:B')->getAlignment()->setWrapText(true);
-		$sheet->getStyle('A:B')->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
-		$sheet->getColumnDimensionByColumn(1)->setAutoSize(false);
-		$sheet->getColumnDimensionByColumn(1)->setWidth('40');
-		$sheet->getColumnDimensionByColumn(2)->setAutoSize(false);
-		$sheet->getColumnDimensionByColumn(2)->setWidth('120');
-
 
 		// Download the file
 		$writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
@@ -251,13 +262,19 @@ class Storyline2PHP {
 		</div>
 		<div class="shadow-sm overflow-hidden p-4 rounded table-container">
 			<table class="rounded table table-striped">
-				<thead><tr><th>Slide title</th><th>Notes</th><th></th></tr></thead>
+				<thead><tr><th>#</th><th>Slide title</th><th>Notes</th><th></th></tr></thead>
 				<tbody>
 				<?php foreach ($data as $rows): ?>
-					<?php foreach ($rows as $id => $notes): ?>
-						<?php $notes = nl2br($notes); ?>
+					<?php foreach ($rows as $full_id => $notes): ?>
+						<?php
+						$parts = explode(" ", $full_id, 2);
+						$id = $parts[0];
+						$title = $parts[1];
+						$notes = nl2br($notes); 
+						?>
 						<tr>
-							<td style="width: 25%"><strong><?= $id ?></strong></td>
+							<td style="width: 5%"><strong><?= $id ?></strong></td>
+							<td style="width: 20%"><strong><?= $title ?></strong></td>
 							<td id="content--<?= $i ?>"><?= $notes ?></td>
 							<td style="width: 80px"><button class="btn btn-dark copy--btn" data-clipboard-target="#content--<?= $i ?>" title="Copy to clipboard">Copy</button></td>
 						</tr>
@@ -308,6 +325,6 @@ class Storyline2PHP {
 $instance = new Storyline2PHP();
 try {
 	$instance->run();
-} catch( \PhpOffice\PhpSpreadsheet\Writer\Exception $e ) {
+} catch( \PhpOffice\PhpSpreadsheet\Writer\Exception|\PhpOffice\PhpSpreadsheet\Exception $e ) {
 	echo $e->getMessage();
 }
